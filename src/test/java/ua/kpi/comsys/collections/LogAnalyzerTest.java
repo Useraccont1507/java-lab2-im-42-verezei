@@ -103,4 +103,111 @@ class LogAnalyzerTest {
             assertEquals(Set.of("0.0.0.0", "255.255.255.255", "199.249.100.9"), analyzer.getUniqueIps(lines));
         }
     }
+
+    @Nested
+    class GetTopIps {
+
+        private List<String> repeat(String ip, int times) {
+            List<String> lines = new ArrayList<>();
+            for (int i = 0; i < times; i++) {
+                lines.add(line(ip));
+            }
+            return lines;
+        }
+
+        @Test
+        void nullListThrows() {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> analyzer.getTopIps(null, 3));
+            assertEquals("logLines cannot be null", e.getMessage());
+        }
+
+        @Test
+        void nullListCheckedBeforeTopN() {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> analyzer.getTopIps(null, 0));
+            assertEquals("logLines cannot be null", e.getMessage());
+        }
+
+        @ParameterizedTest
+        @ValueSource(ints = {0, -1, Integer.MIN_VALUE})
+        void nonPositiveTopNThrows(int topN) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> analyzer.getTopIps(List.of(line("1.1.1.1")), topN));
+            assertEquals("topN must be greater than 0", e.getMessage());
+        }
+
+        @Test
+        void emptyListGivesEmptyResult() {
+            assertEquals(List.of(), analyzer.getTopIps(List.of(), 5));
+        }
+
+        @Test
+        void sortedByFrequencyDescending() {
+            List<String> lines = new ArrayList<>();
+            lines.addAll(repeat("10.0.0.1", 1));
+            lines.addAll(repeat("10.0.0.2", 3));
+            lines.addAll(repeat("10.0.0.3", 2));
+            assertEquals(List.of("10.0.0.2", "10.0.0.3", "10.0.0.1"), analyzer.getTopIps(lines, 3));
+        }
+
+        @Test
+        void topNLimitsResult() {
+            List<String> lines = new ArrayList<>();
+            lines.addAll(repeat("10.0.0.1", 5));
+            lines.addAll(repeat("10.0.0.2", 4));
+            lines.addAll(repeat("10.0.0.3", 3));
+            assertEquals(List.of("10.0.0.1", "10.0.0.2"), analyzer.getTopIps(lines, 2));
+        }
+
+        @Test
+        void tiesBrokenLexicographically() {
+            List<String> lines = List.of(
+                    line("192.168.0.1"), line("10.0.0.5"), line("172.16.0.1"),
+                    line("172.16.0.1"), line("10.0.0.5"), line("192.168.0.1"));
+            assertEquals(List.of("10.0.0.5", "172.16.0.1", "192.168.0.1"), analyzer.getTopIps(lines, 3));
+        }
+
+        @Test
+        void tieBreakingIsStringOrderNotNumeric() {
+            List<String> lines = List.of(line("9.0.0.1"), line("10.0.0.1"));
+            assertEquals(List.of("10.0.0.1", "9.0.0.1"), analyzer.getTopIps(lines, 2));
+        }
+
+        @Test
+        void tieAtCutoffKeepsAlphabeticallyFirst() {
+            List<String> lines = new ArrayList<>();
+            lines.addAll(repeat("5.5.5.5", 3));
+            lines.addAll(repeat("3.3.3.3", 1));
+            lines.addAll(repeat("2.2.2.2", 1));
+            lines.addAll(repeat("4.4.4.4", 1));
+            assertEquals(List.of("5.5.5.5", "2.2.2.2"), analyzer.getTopIps(lines, 2));
+        }
+
+        @Test
+        void fewerUniqueIpsThanTopNReturnsAll() {
+            List<String> lines = new ArrayList<>();
+            lines.addAll(repeat("1.1.1.1", 1));
+            lines.addAll(repeat("2.2.2.2", 2));
+            assertEquals(List.of("2.2.2.2", "1.1.1.1"), analyzer.getTopIps(lines, 10));
+        }
+
+        @Test
+        void malformedLinesNotCounted() {
+            List<String> lines = new ArrayList<>(Arrays.asList(
+                    line("1.1.1.1"),
+                    "2.2.2.2 garbage",
+                    "2.2.2.2 garbage",
+                    null,
+                    line("300.1.1.1")));
+            assertEquals(List.of("1.1.1.1"), analyzer.getTopIps(lines, 5));
+        }
+
+        @Test
+        void resultIsModifiable() {
+            List<String> top = analyzer.getTopIps(List.of(line("1.1.1.1")), 1);
+            top.add("x");
+            assertEquals(2, top.size());
+        }
+    }
 }
