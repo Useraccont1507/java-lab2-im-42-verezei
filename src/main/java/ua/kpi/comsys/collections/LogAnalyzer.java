@@ -1,7 +1,11 @@
 package ua.kpi.comsys.collections;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,6 +36,35 @@ public class LogAnalyzer {
             }
         }
         return ips;
+    }
+
+    /**
+     * Returns up to {@code topN} most frequent IPs, sorted by frequency descending;
+     * IPs with equal frequency are sorted lexicographically ascending.
+     */
+    public List<String> getTopIps(List<String> logLines, int topN) {
+        requireLines(logLines);
+        if (topN <= 0) {
+            throw new IllegalArgumentException("topN must be greater than 0");
+        }
+
+        Map<String, Integer> counts = new HashMap<>();
+        for (String line : logLines) {
+            String ip = extractIp(line);
+            if (ip != null) {
+                counts.merge(ip, 1, Integer::sum);
+            }
+        }
+
+        List<Map.Entry<String, Integer>> entries = new ArrayList<>(counts.entrySet());
+        entries.sort(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())
+                .thenComparing(Map.Entry.comparingByKey()));
+
+        List<String> top = new ArrayList<>();
+        for (int i = 0; i < Math.min(topN, entries.size()); i++) {
+            top.add(entries.get(i).getKey());
+        }
+        return top;
     }
 
     private static void requireLines(List<String> logLines) {
